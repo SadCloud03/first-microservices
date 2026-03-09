@@ -55,7 +55,7 @@ async def listar_ordenes(
             for row in rows:
                 # Reutilizamos la lógica de obtener_orden para traer los items de cada una
                 orden_id = row["id"]
-                items_rows = conn.execute("SELECT * FROM Orden_Items WHERE id_orden = ?", (orden_id,)).fetchall()
+                items_rows = conn.execute("SELECT * FROM Ordenes_items WHERE id_orden = ?", (orden_id,)).fetchall()
                 orden_dict = dict(row)
                 orden_dict["items"] = [dict(item) for item in items_rows]
                 ordenes_finales.append(orden_dict)
@@ -118,15 +118,15 @@ async def create_orden(orden: OrdenCreate):
             with get_connection() as conn:
                 # Insertar cabecera
                 cursor = conn.execute(
-                    "INSERT INTO Ordenes (cliente_id, total, estado) VALUES (?, ?, ?)",
-                    (orden.cliente_id, total_orden, "PENDIENTE")
+                    "INSERT INTO Ordenes (cliente_id, estado, total) VALUES (?, ?, ?)",
+                    (orden.cliente_id, "PENDIENTE", total_orden)
                 )
                 orden_id = cursor.lastrowid
 
                 # Insertar items
                 for item in orden.items:
                     conn.execute("""
-                        INSERT INTO Orden_Items (id_orden, id_variante, cantidad, precio_unitario) 
+                        INSERT INTO Ordenes_items (id_orden, id_variante, cantidad, precio_unitario) 
                         VALUES (?, ?, ?, ?)
                     """, (orden_id, item.id_variante, item.cantidad, item.precio_unitario))
 

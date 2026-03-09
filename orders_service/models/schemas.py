@@ -9,6 +9,12 @@ class OrdenItemBase(BaseModel):
 
 class OrdenItemOut(BaseModel):
     id : int
+    id_variante : int
+    cantidad : int
+    precio_unitario : float
+    
+    class config:
+        from_atributes = True
 
 class OrdenCreate(BaseModel):
     cliente_id : int
