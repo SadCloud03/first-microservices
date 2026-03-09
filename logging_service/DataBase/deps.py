@@ -1,4 +1,4 @@
-from DataBase.db import AsyncSessionLocal
+from logging_service.DataBase.db import AsyncSessionLocal
 
 async def get_db():
     async with AsyncSessionLocal() as session:

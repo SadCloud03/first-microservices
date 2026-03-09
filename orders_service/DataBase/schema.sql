@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS Ordenes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER NOT NULL,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    estado TEXT DEFAULT 'PENDIENTE',
+    total REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Ordenes_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_orden INTEGER NOT NULL,
+    id_variante INTEGER NOT NULL,
+    cantidad INTEGER NOT NULL, 
+    precio_unitario REAL NOT NULL,
+    FOREIGN KEY (id_orden) REFERENCES Ordenes(id)
+);

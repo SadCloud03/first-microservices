@@ -4,7 +4,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from DataBase.db import Base
+from logging_service.DataBase.db import Base
 
 
 class Service(Base):

@@ -26,7 +26,7 @@ def listar_variantes(
     query = """
         SELECT
             v.id, v.id_producto, v.calce, v.color, v.stock, p.nombre AS nombre_producto
-        FORM Variantes_producto v
+        FROM Variantes_producto v
         JOIN Productos p ON v.id_producto = p.id 
         WHERE 1=1
     """
@@ -101,8 +101,8 @@ def actualizar_variante(variante_id: int, datos: VarianteUpdate):
     set_clause = ", ".join(f"{k} = ?" for k in campos)
     values = list(campos.values()) + [variante_id]
     with get_connection() as conn:
-        result = conn.execute(f"UPDATE Variante_producto SET {set_clause} WHERE id = ?", values)
-        if result.lastrowid == 0:
+        result = conn.execute(f"UPDATE Variantes_producto SET {set_clause} WHERE id = ?", values)
+        if result.rowcount == 0:
             variantes_logger.warning(f"variante de id : {variante_id} no fue encontrada [actualizar_variante]")
             raise HTTPException(status_code=404, detail="Variante no encontrada")
     return obtener_variante(variante_id)
@@ -123,7 +123,7 @@ def eliminar_variante(variante_id: int):
 @router.patch("/{variante_id}/stock", response_model=VarianteOut)
 def ajustar_stock(variante_id: int, body: StockUpdate):
     with get_connection() as conn:
-        row = conn.execute("SELECT stock FROM Variantes_producto WHERE id = ?", (variante_id)).fetchone()
+        row = conn.execute("SELECT stock FROM Variantes_producto WHERE id = ?", (variante_id,)).fetchone()
         if not row:
             stock_logger.warning(f"Variante id : {variante_id} no fue encontrada [ajustar_stock]")
             raise HTTPException(status_code=404, detail="Variante no encontrada")
@@ -136,7 +136,7 @@ def ajustar_stock(variante_id: int, body: StockUpdate):
     return obtener_variante(variante_id)
 
 
-
+# ---- este es para establecer nuevo stock -------
 @router.put("/{variante_id}/stock", response_model=VarianteOut)
 def establecer_stock(variante_id: int, body: StockUpdate):
     if body.cantidad < 0:

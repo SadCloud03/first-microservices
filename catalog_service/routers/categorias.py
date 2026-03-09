@@ -14,7 +14,7 @@ def listar_categorias():
     return [CategoriaOut(**dict(r)) for r in rows]
 
 
-@router.get("/{categorie_id}", response_model=CategoriaOut)
+@router.get("/{categoria_id}", response_model=CategoriaOut)
 def obtener_categoria(categoria_id: int):
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM Categorias WHERE id = ?", (categoria_id,)).fetchone()

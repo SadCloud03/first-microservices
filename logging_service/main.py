@@ -2,10 +2,10 @@ from fastapi import FastAPI, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
-from DataBase.db import engine, Base
-from DataBase.deps import get_db
-from models.models import Service, Token, Log
-from models.schemas import LogIn, LogOut
+from logging_service.DataBase.db import engine, Base
+from logging_service.DataBase.deps import get_db
+from logging_service.models.models import Service, Token, Log
+from logging_service.models.schemas import LogIn, LogOut
 from datetime import datetime
 from contextlib import asynccontextmanager
 
