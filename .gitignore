@@ -1,2 +1,8 @@
 #Entorno virtual 
 .venv
+
+#variables de entorno de catalog_service
+catalog_service/.env
+
+#variables de entorno de logging_service
+logging_service/.env
