@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from catalog_service.DataBase.db import get_connection
 from catalog_service.models.schemas import VarianteCreate, VarianteOut, VarianteUpdate, StockUpdate
 from shared.logger import _build_logger
+from catalog_service.auth import obtener_usuario_actual
 
 
 variantes_logger = _build_logger("variantes_catalog_service", 2)
@@ -78,7 +79,7 @@ def obtener_variante(variante_id: int):
 
 
 @router.post("/", response_model=VarianteOut, status_code=201)
-def crear_variante(variante: VarianteCreate):
+def crear_variante(variante: VarianteCreate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         if not conn.execute("SELECT 1 FROM Productos WHERE id = ?", (variante.id_producto,)).fetchone():
             raise HTTPException(status_code=400, detail="Producto no existe")
@@ -93,7 +94,7 @@ def crear_variante(variante: VarianteCreate):
 
 
 @router.patch("/{variante_id}", response_model=VarianteOut)
-def actualizar_variante(variante_id: int, datos: VarianteUpdate):
+def actualizar_variante(variante_id: int, datos: VarianteUpdate, usuario : str = Depends(obtener_usuario_actual)):
     campos = datos.model_dump(exclude_none=True)
     if not campos:
         variantes_logger.warning(f"al intentar actualizar variante id : {variante_id} no se enviaron campos...")
@@ -110,7 +111,7 @@ def actualizar_variante(variante_id: int, datos: VarianteUpdate):
 
 
 @router.delete("/{variante_id}", status_code=204)
-def eliminar_variante(variante_id: int):
+def eliminar_variante(variante_id: int, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("DELETE FROM  Variantes_producto WHERE id = ?", (variante_id,))
         if result.rowcount == 0:
@@ -121,7 +122,7 @@ def eliminar_variante(variante_id: int):
 
 
 @router.patch("/{variante_id}/stock", response_model=VarianteOut)
-def ajustar_stock(variante_id: int, body: StockUpdate):
+def ajustar_stock(variante_id: int, body: StockUpdate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         row = conn.execute("SELECT stock FROM Variantes_producto WHERE id = ?", (variante_id,)).fetchone()
         if not row:
@@ -138,7 +139,7 @@ def ajustar_stock(variante_id: int, body: StockUpdate):
 
 # ---- este es para establecer nuevo stock -------
 @router.put("/{variante_id}/stock", response_model=VarianteOut)
-def establecer_stock(variante_id: int, body: StockUpdate):
+def establecer_stock(variante_id: int, body: StockUpdate, usuario : str = Depends(obtener_usuario_actual)):
     if body.cantidad < 0:
         stock_logger.warning(f"la variante id : {variante_id} intento agregar cantidad : {body.cantidad} a su stock")
         raise HTTPException(status_code=400, detail="El stock no puede ser negativo")

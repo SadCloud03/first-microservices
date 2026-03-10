@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from catalog_service.DataBase.db import get_connection
 from catalog_service.models.schemas import CategoriaCreate, CategoriaOut
+from catalog_service.auth import obtener_usuario_actual
 
 
 router = APIRouter(prefix="/categorias", tags=["Categorias"])
@@ -24,7 +25,7 @@ def obtener_categoria(categoria_id: int):
 
 
 @router.post("/", response_model=CategoriaOut, status_code=201)
-def create_categoria(categoria: CategoriaCreate):
+def create_categoria(categoria: CategoriaCreate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         cursor = conn.execute("INSERT INTO Categorias (nombre_categoria) VALUES (?)", (categoria.nombre_categoria,))
         nuevo_id = cursor.lastrowid
@@ -32,7 +33,7 @@ def create_categoria(categoria: CategoriaCreate):
 
 
 @router.patch("/{categoria_id}", response_model=CategoriaOut)
-def actualizar_categoria(categoria_id: int, categoria: CategoriaCreate):
+def actualizar_categoria(categoria_id: int, categoria: CategoriaCreate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("UPDATE Categorias SET nombre_categoria = ? WHERE id = ?", (categoria.nombre_categoria, categoria_id))
         if result.rowcount == 0:
@@ -41,7 +42,7 @@ def actualizar_categoria(categoria_id: int, categoria: CategoriaCreate):
 
 
 @router.delete("/{categoria_id}", status_code=204)
-def eliminar_categoria(categoria_id: int):
+def eliminar_categoria(categoria_id: int, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("DELETE FROM Categorias WHERE id = ?", (categoria_id,))
         if result.rowcount == 0:

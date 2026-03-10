@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
+from catalog_service.auth import obtener_usuario_actual
 from catalog_service.DataBase.db import get_connection
 from catalog_service.models.schemas import MarcaCreate, MarcaOut
 
@@ -24,7 +25,7 @@ def obtener_marca(marca_id: int):
 
 
 @router.post("/", response_model=MarcaOut, status_code=201)
-def crear_marca(marca: MarcaCreate):
+def crear_marca(marca: MarcaCreate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         cursor = conn.execute("INSERT INTO Marcas (nombre_marca) VALUES (?)", (marca.nombre_marca,))
         nuevo_id = cursor.lastrowid
@@ -32,7 +33,7 @@ def crear_marca(marca: MarcaCreate):
 
 
 @router.patch("/{marca_id}", response_model=MarcaOut)
-def actualizar_marca(marca_id: int, marca: MarcaCreate):
+def actualizar_marca(marca_id: int, marca: MarcaCreate, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("UPDATE Marcas SET nombre_marca = ? WHERE id = ?", (marca.nombre_marca, marca_id))
         if result.rowcount == 0:
@@ -41,7 +42,7 @@ def actualizar_marca(marca_id: int, marca: MarcaCreate):
 
 
 @router.delete("/{marca_id}", status_code=204)
-def eliminar_marca(marca_id: int):
+def eliminar_marca(marca_id: int, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("DELETE FROM Marcas WHERE id = ?", (marca_id,))
         if result.rowcount == 0:

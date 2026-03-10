@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from catalog_service.DataBase.db import get_connection
 from catalog_service.models.schemas import ProductoCreate, ProductoUpdate, ProductoOut
 from shared.logger import _build_logger
 from sqlite3 import IntegrityError
+from catalog_service.auth import obtener_usuario_actual
 
 
 productos_logger = _build_logger("productos_catalog_service", 2) # creacion del logger para este microservicio
@@ -92,7 +93,7 @@ def obtener_producto(producto_id: int):
 
 
 @router.post("/", response_model=ProductoOut, status_code=201)
-def crear_producto(producto: ProductoCreate):
+def crear_producto(producto: ProductoCreate, usuario : str = Depends(obtener_usuario_actual)):
     try:
         with get_connection() as conn:
             cursor = conn.execute(
@@ -108,7 +109,7 @@ def crear_producto(producto: ProductoCreate):
 
 
 @router.patch("/{producto_id}", response_model=ProductoOut)
-def actualizar_producto(producto_id: int, datos: ProductoUpdate):
+def actualizar_producto(producto_id: int, datos: ProductoUpdate, usuario : str = Depends(obtener_usuario_actual)):
     campos = datos.model_dump(exclude_none=True)
     if not campos:
         productos_logger.warning(f"Producto de id : {producto_id} se intento actualizar sin campos")
@@ -127,7 +128,7 @@ def actualizar_producto(producto_id: int, datos: ProductoUpdate):
 
 
 @router.delete("/{producto_id}", status_code=204)
-def eliminar_producto(producto_id: int):
+def eliminar_producto(producto_id: int, usuario : str = Depends(obtener_usuario_actual)):
     with get_connection() as conn:
         result = conn.execute("DELETE FROM Productos WHERE id = ?", (producto_id,))
         if result.rowcount == 0:
