@@ -25,10 +25,14 @@ def obtener_usuario_actual(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = str = payload.get("sub")
+        username : str = payload.get("sub")
         if username is None:
             raise credentials_exception
     except:
         raise credentials_exception
 
     return username
+
+if __name__ == "__main__":
+    token_provisional = crear_token_acceso(data={"sub" : "ivan_admin"})
+    print(f"token : {token_provisional}")
