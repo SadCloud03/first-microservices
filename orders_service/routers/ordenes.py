@@ -8,6 +8,7 @@ from httpx import AsyncClient, ConnectError, HTTPStatusError
 from orders_service.DataBase.db import get_connection
 from orders_service.models.schemas import OrdenCreate, OrdenOut, EstadoUpdate
 from shared.logger import _build_logger
+from shared.circuit_breaker import catalog_breaker
 
 orders_logger = _build_logger("orders_service", 1)
 router = APIRouter(prefix="/ordenes", tags=["Orders"])
@@ -15,6 +16,24 @@ router = APIRouter(prefix="/ordenes", tags=["Orders"])
 # URL del catalogo 
 CATALOG_URL = os.getenv("CATALOG_SERVICE_URL", "http://127.0.0.1:8000")
 
+
+# --- FUNCIÓN PROTEGIDA POR EL BREAKER ---
+@catalog_breaker
+async def llamar_patch_stock(client: AsyncClient, variante_id: int, cantidad: int):
+    """
+    Esta función centraliza la comunicación con el Catálogo.
+    Si el Catálogo falla repetidamente, el breaker abrirá el circuito aquí.
+    """
+    headers = {"Authorization": f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
+    response = await client.patch(
+        f"{CATALOG_URL}/variantes/{variante_id}/stock",
+        json={"cantidad": cantidad},
+        headers=headers,
+        timeout=3.0
+    )
+    # Lanza HTTPStatusError si es 4xx o 5xx para que el breaker lo detecte
+    response.raise_for_status()
+    return response
 
 
 async def validar_producto_en_catalogo(producto_id: int):
@@ -86,65 +105,52 @@ async def obtener_orden(orden_id : int):
 
 
 
-
 @router.post("/", response_model=OrdenOut, status_code=201)
 async def create_orden(orden: OrdenCreate):
-    #PREVIAMENTE:
-    headers = {"Authorization" : f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
-
-    # 1. Instanciar el cliente correctamente
     async with AsyncClient() as client:
         total_orden = sum(item.cantidad * item.precio_unitario for item in orden.items)
         
         # --- PASO 1: VALIDACIÓN Y DESCUENTO DE STOCK ---
-        # Lo hacemos antes de tocar nuestra DB de órdenes
         for item in orden.items:
             try:
-                # Llamamos al endpoint de stock que vimos antes
-                res = await client.patch(
-                    f"{CATALOG_URL}/variantes/{item.id_variante}/stock",
-                    json={"cantidad": -item.cantidad}, # Restamos stock
-                    headers=headers
-                )
-                
-                if res.status_code == 404:
-                    raise HTTPException(status_code=404, detail=f"La variante {item.id_variante} no existe.")
-                if res.status_code == 400:
-                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para variante {item.id_variante}.")
-                res.raise_for_status() # Lanza error si hay otros problemas (500, etc)
+                # Usamos la función protegida
+                await llamar_patch_stock(client, item.id_variante, -item.cantidad)
                 
             except HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise HTTPException(status_code=404, detail=f"Variante {item.id_variante} no existe.")
+                if e.response.status_code == 400:
+                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.id_variante}.")
+                
                 orders_logger.error(f"Error de catálogo: {e.response.text}")
-                raise HTTPException(status_code=e.response.status_code, detail="Error en comunicación con catálogo")
+                raise HTTPException(status_code=e.response.status_code, detail="Error en catálogo")
+            
+            except HTTPException as e:
+                # Re-lanzamos el 503 del Circuit Breaker si el circuito está abierto
+                raise e
             except Exception as e:
-                orders_logger.error(f"Error de conexión: {e}")
+                orders_logger.error(f"Falla crítica de conexión: {e}")
                 raise HTTPException(status_code=503, detail="Servicio de catálogo no disponible")
 
         # --- PASO 2: PERSISTENCIA EN DB ---
         try:
             with get_connection() as conn:
-                # Insertar cabecera
                 cursor = conn.execute(
                     "INSERT INTO Ordenes (cliente_id, estado, total) VALUES (?, ?, ?)",
                     (orden.cliente_id, "PENDIENTE", total_orden)
                 )
                 orden_id = cursor.lastrowid
-
-                # Insertar items
                 for item in orden.items:
                     conn.execute("""
                         INSERT INTO Ordenes_items (id_orden, id_variante, cantidad, precio_unitario) 
                         VALUES (?, ?, ?, ?)
                     """, (orden_id, item.id_variante, item.cantidad, item.precio_unitario))
-
-                orders_logger.info(f"Orden {orden_id} creada exitosamente. Total: {total_orden}")
-
-            # --- PASO 3: RETORNO DE DATOS ---
+                
+                orders_logger.info(f"Orden {orden_id} creada. Total: {total_orden}")
             return await obtener_orden(orden_id=orden_id)
         
         except Exception as e:
-            orders_logger.error(f"Error al escribir en DB de órdenes: {e}")
-            # {HINT}: En un sistema real, aquí deberías devolver el stock al catálogo si la DB falló
+            orders_logger.error(f"Error al escribir en DB: {e}")
             raise HTTPException(status_code=500, detail="Error interno al guardar la orden")
         
 
@@ -152,26 +158,18 @@ async def create_orden(orden: OrdenCreate):
 @router.patch("/{orden_id}/estado", response_model=OrdenOut)
 async def actualizar_estado_orden(orden_id: int, body: EstadoUpdate):
     nuevo_estado = body.estado.upper()
-
-    headers = {"Authorization" : f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
-    
-    # 1. Buscar la orden actual para saber si existe y qué items tiene
     orden_actual = await obtener_orden(orden_id) 
     
-    # 2. Si se está cancelando, devolver el stock al catálogo
     if nuevo_estado == "CANCELADA" and orden_actual["estado"] != "CANCELADA":
         async with AsyncClient() as client:
             for item in orden_actual["items"]:
                 try:
-                    # Devolvemos el stock (cantidad en positivo)
-                    await client.patch(
-                        f"{CATALOG_URL}/variantes/{item['id_variante']}/stock",
-                        json={"cantidad": item['cantidad']},
-                        headers=headers
-                    )
+                    # También protegemos la devolución de stock
+                    await llamar_patch_stock(client, item['id_variante'], item['cantidad'])
                 except Exception as e:
-                    orders_logger.error(f"Error devolviendo stock de orden {orden_id}: {e}")
-                    # Nota: En producción aquí usarías una cola de reintentos
+                    orders_logger.error(f"No se pudo devolver stock de orden {orden_id}: {e}")
+
+
 
     # 3. Actualizar el estado en nuestra base de datos
     try:
