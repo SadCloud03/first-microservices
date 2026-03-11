@@ -6,3 +6,6 @@ catalog_service/.env
 
 #variables de entorno de logging_service
 logging_service/.env
+
+#cariables de entorno de orders_service
+orders_service/.env
