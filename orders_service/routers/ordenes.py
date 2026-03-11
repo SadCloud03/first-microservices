@@ -89,6 +89,9 @@ async def obtener_orden(orden_id : int):
 
 @router.post("/", response_model=OrdenOut, status_code=201)
 async def create_orden(orden: OrdenCreate):
+    #PREVIAMENTE:
+    headers = {"Authorization" : f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
+
     # 1. Instanciar el cliente correctamente
     async with AsyncClient() as client:
         total_orden = sum(item.cantidad * item.precio_unitario for item in orden.items)
@@ -100,7 +103,8 @@ async def create_orden(orden: OrdenCreate):
                 # Llamamos al endpoint de stock que vimos antes
                 res = await client.patch(
                     f"{CATALOG_URL}/variantes/{item.id_variante}/stock",
-                    json={"cantidad": -item.cantidad} # Restamos stock
+                    json={"cantidad": -item.cantidad}, # Restamos stock
+                    headers=headers
                 )
                 
                 if res.status_code == 404:
@@ -148,6 +152,8 @@ async def create_orden(orden: OrdenCreate):
 @router.patch("/{orden_id}/estado", response_model=OrdenOut)
 async def actualizar_estado_orden(orden_id: int, body: EstadoUpdate):
     nuevo_estado = body.estado.upper()
+
+    headers = {"Authorization" : f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
     
     # 1. Buscar la orden actual para saber si existe y qué items tiene
     orden_actual = await obtener_orden(orden_id) 
@@ -160,7 +166,8 @@ async def actualizar_estado_orden(orden_id: int, body: EstadoUpdate):
                     # Devolvemos el stock (cantidad en positivo)
                     await client.patch(
                         f"{CATALOG_URL}/variantes/{item['id_variante']}/stock",
-                        json={"cantidad": item['cantidad']}
+                        json={"cantidad": item['cantidad']},
+                        headers=headers
                     )
                 except Exception as e:
                     orders_logger.error(f"Error devolviendo stock de orden {orden_id}: {e}")
