@@ -3,7 +3,6 @@ from functools import wraps
 from fastapi import HTTPException
 from shared.logger import _build_logger
 
-# Este logger usará la configuración que ya tienes (HTTPLogHandler)
 breaker_logger = _build_logger("catalgo_circuitbracker", 4)
 
 class CircuitBreaker:

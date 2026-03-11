@@ -4,38 +4,48 @@ load_dotenv()
 import os
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
-from httpx import AsyncClient, ConnectError, HTTPStatusError
+from httpx import AsyncClient, ConnectError, HTTPStatusError, TimeoutException
 from orders_service.DataBase.db import get_connection
 from orders_service.models.schemas import OrdenCreate, OrdenOut, EstadoUpdate
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from shared.logger import _build_logger
 from shared.circuit_breaker import catalog_breaker
 
 orders_logger = _build_logger("orders_service", 1)
 router = APIRouter(prefix="/ordenes", tags=["Orders"])
 
+
 # URL del catalogo 
 CATALOG_URL = os.getenv("CATALOG_SERVICE_URL", "http://127.0.0.1:8000")
 
+# DEFINICIÓN DE LA POLÍTICA:
+# - stop: Máximo 3 intentos.
+# - wait: Espera exponencial (1s, 2s, 4s...) para no saturar al catálogo si está volviendo a la vida.
+# - retry: Solo reintentamos si son errores de RED. No reintentamos si es 404 o 400.
+retry_policy = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((ConnectError, TimeoutException)),
+    before_sleep=lambda retry_state: orders_logger.warning(
+        f"Reintentando llamada al Catálogo... Intento {retry_state.attempt_number}"
+    )
+)
 
-# --- FUNCIÓN PROTEGIDA POR EL BREAKER ---
+# APLICACIÓN:
+# El orden importa: Primero el Breaker, luego el Retry.
 @catalog_breaker
+@retry_policy
 async def llamar_patch_stock(client: AsyncClient, variante_id: int, cantidad: int):
-    """
-    Esta función centraliza la comunicación con el Catálogo.
-    Si el Catálogo falla repetidamente, el breaker abrirá el circuito aquí.
-    """
     headers = {"Authorization": f"Bearer {os.getenv("CATALOG_SERVICE_TOKEN")}"}
     response = await client.patch(
         f"{CATALOG_URL}/variantes/{variante_id}/stock",
         json={"cantidad": cantidad},
         headers=headers,
-        timeout=3.0
+        timeout=3.0 # Un timeout razonable
     )
-    # Lanza HTTPStatusError si es 4xx o 5xx para que el breaker lo detecte
+    # Importante: raise_for_status() hace que los errores 4xx/5xx sean excepciones
     response.raise_for_status()
     return response
-
-
 async def validar_producto_en_catalogo(producto_id: int):
     async with AsyncClient() as client:
         try:
