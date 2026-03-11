@@ -1,10 +1,16 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from catalog_service.auth import obtener_usuario_actual
 from catalog_service.DataBase.db import get_connection
 from catalog_service.models.schemas import MarcaCreate, MarcaOut
+from shared.logger import _build_logger
 
 
+
+logger_marcas = _build_logger("marcas_catalog_service", 2)
 router = APIRouter(prefix="/marcas", tags=["Marcas"])
 
 
@@ -29,6 +35,8 @@ def crear_marca(marca: MarcaCreate, usuario : str = Depends(obtener_usuario_actu
     with get_connection() as conn:
         cursor = conn.execute("INSERT INTO Marcas (nombre_marca) VALUES (?)", (marca.nombre_marca,))
         nuevo_id = cursor.lastrowid
+        logger_marcas.info(f"Marca {marca.nombre_marca} fue creada con id : {nuevo_id}")
+
     return obtener_marca(nuevo_id)
 
 
